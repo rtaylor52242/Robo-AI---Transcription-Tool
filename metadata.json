@@ -1,0 +1,7 @@
+{
+  "name": "Robo AI - Transcription Tool",
+  "description": "An application that records audio from the microphone and uses AI to transcribe it into text. Users can easily record, stop, transcribe, and copy the resulting text.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
