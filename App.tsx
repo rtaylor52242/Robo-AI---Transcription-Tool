@@ -103,11 +103,81 @@ const MetricsIcon = () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
 );
 
+const DownloadIcon = () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+);
+
+const HelpIcon = () => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.79 4 4 0 .863-.27 1.66-.744 2.26l-1.06 1.06c-.3.3-.444.75-.444 1.2v.25m-3.772 4.75h.01M12 19h.01"></path><circle cx="12" cy="12" r="10"></circle></svg>
+);
+
+const CloseIcon = () => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+);
+
+
 // --- Child Components ---
 const MetricItem = ({ label, value }: { label: string; value: number }) => (
     <div className="flex flex-col p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">{value}</span>
         <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
+    </div>
+);
+
+const HelpModal = ({ onClose }: { onClose: () => void }) => (
+    <div 
+        className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fadeIn"
+        onClick={onClose}
+        aria-modal="true"
+        role="dialog"
+    >
+        <div 
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:p-8 relative animate-scaleIn"
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside the modal
+        >
+            <button 
+                onClick={onClose} 
+                className="absolute top-4 right-4 p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500"
+                aria-label="Close help"
+            >
+                <CloseIcon />
+            </button>
+            <h2 className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-600 mb-6">
+                How to Use the App
+            </h2>
+            <div className="space-y-4 text-gray-700 dark:text-gray-300">
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">1. Select Language</h3>
+                    <p>Choose your desired output language from the dropdown menu before transcribing.</p>
+                </div>
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">2. Record Audio</h3>
+                    <p>Click the <span className="font-bold text-blue-500">Record</span> button to start recording using your microphone. The button will turn red to indicate it's active.</p>
+                </div>
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">3. Stop Recording</h3>
+                    <p>Click the <span className="font-bold text-red-500">Stop</span> button when you're finished. An audio player will appear, allowing you to preview your recording.</p>
+                </div>
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">4. Transcribe</h3>
+                    <p>Click the <span className="font-bold text-purple-500">Transcribe</span> button. The AI will process the audio and display the text in the text area below.</p>
+                </div>
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">5. Manage & Analyze</h3>
+                    <ul className="list-disc list-inside space-y-1 pl-2">
+                        <li><strong className="text-purple-500">Copy:</strong> Copies the transcribed text to your clipboard.</li>
+                        <li><strong className="text-yellow-500">Clear:</strong> Clears the text area.</li>
+                        <li><strong className="text-green-500">Download:</strong> Saves the transcription as a .txt file.</li>
+                        <li><strong className="text-blue-500">Share:</strong> Share the text or audio file using your device's native share function.</li>
+                        <li><strong className="text-gray-500">Metrics:</strong> View detailed analytics about the text, including word count and part-of-speech distribution.</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">6. Save & Load Sessions</h3>
+                    <p>Type a name in the "session name" field and click <span className="font-bold text-green-600">Save Session</span> to store your transcription. You can load, rename, or delete saved sessions from the list below.</p>
+                </div>
+            </div>
+        </div>
     </div>
 );
 
@@ -154,6 +224,7 @@ const App: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [copySuccess, setCopySuccess] = useState<string>('');
     const [isSessionsExpanded, setIsSessionsExpanded] = useState<boolean>(true);
+    const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
     const [theme, setTheme] = useLocalStorage<string>(THEME_STORAGE_KEY, () => 
         window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
     );
@@ -296,6 +367,21 @@ const App: React.FC = () => {
         setMetrics(null);
         setShowMetrics(false);
     };
+
+    const handleDownloadText = () => {
+        if (!transcribedText.trim()) return;
+        
+        const blob = new Blob([transcribedText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `transcription-${Date.now()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
 
     const handleSaveSession = () => {
         if (!transcribedText.trim()) {
@@ -457,14 +543,22 @@ const App: React.FC = () => {
     return (
         <div className="min-h-screen text-gray-800 dark:text-gray-200 flex flex-col items-center justify-center p-4 font-sans">
             <div className="w-full max-w-2xl bg-white dark:bg-gray-800 shadow-2xl rounded-2xl p-6 sm:p-8 space-y-8">
-                <header className="text-center relative">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-600">
-                        Robo AI - Transcription Tool
-                    </h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">Record, Stop, and Transcribe with the power of AI.</p>
-                    <button onClick={toggleTheme} title="Toggle Theme" className="absolute top-0 right-0 p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
-                        {theme === 'light' ? <MoonIcon /> : <SunIcon />}
-                    </button>
+                <header className="grid grid-cols-[1fr,auto,1fr] items-center gap-4">
+                    <div />
+                    <div className="text-center">
+                        <h1 className="text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-600">
+                            Robo AI - Transcription Tool
+                        </h1>
+                        <p className="text-gray-500 dark:text-gray-400 mt-2">Record, Stop, and Transcribe with the power of AI.</p>
+                    </div>
+                    <div className="flex items-center gap-2 justify-self-end">
+                        <button onClick={() => setShowHelpModal(true)} title="Help" className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                            <HelpIcon />
+                        </button>
+                        <button onClick={toggleTheme} title="Toggle Theme" className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                            {theme === 'light' ? <MoonIcon /> : <SunIcon />}
+                        </button>
+                    </div>
                 </header>
 
                 <div className="space-y-2">
@@ -519,6 +613,7 @@ const App: React.FC = () => {
                                 {navigator.share && (
                                     <button onClick={() => handleShare('text')} title="Share Text" className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"><ShareIcon /></button>
                                 )}
+                                <button onClick={handleDownloadText} title="Download Text" className="flex items-center gap-2 text-sm text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 transition-colors"><DownloadIcon /></button>
                                 <button onClick={handleClearText} title="Clear Text" className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-500 hover:text-yellow-700 dark:hover:text-yellow-400 transition-colors"><ClearIcon /></button>
                                 <button onClick={handleCopyText} title="Copy Text" className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors">
                                     {copySuccess ? copySuccess : <CopyIcon />}
@@ -675,6 +770,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
             <footer className="text-center mt-8 text-gray-600 dark:text-gray-500 text-sm">
                 <p>Powered by Gemini API</p>
             </footer>
