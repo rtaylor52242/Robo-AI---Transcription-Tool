@@ -152,7 +152,7 @@ const HelpModal = ({ onClose }: { onClose: () => void }) => (
                 </div>
                 <div>
                     <h3 className="font-semibold text-lg mb-1">2. Record Audio</h3>
-                    <p>Click the <span className="font-bold text-blue-500">Record</span> button to start recording using your microphone. The button will turn red to indicate it's active.</p>
+                    <p>Click the <span className="font-bold text-blue-500">Record</span> button to start recording using your microphone. The button will turn red to indicate it's active, and a timer will show the recording duration.</p>
                 </div>
                 <div>
                     <h3 className="font-semibold text-lg mb-1">3. Stop Recording</h3>
@@ -175,6 +175,16 @@ const HelpModal = ({ onClose }: { onClose: () => void }) => (
                 <div>
                     <h3 className="font-semibold text-lg mb-1">6. Save & Load Sessions</h3>
                     <p>Type a name in the "session name" field and click <span className="font-bold text-green-600">Save Session</span> to store your transcription. You can load, rename, or delete saved sessions from the list below.</p>
+                </div>
+                <div>
+                    <h3 className="font-semibold text-lg mb-1">7. Keyboard Shortcuts</h3>
+                    <ul className="list-disc list-inside space-y-2 pl-2">
+                        <li>Press <kbd className="font-mono py-0.5 px-1.5 bg-gray-200 dark:bg-gray-700 rounded-md text-sm">R</kbd> to Start/Stop Recording.</li>
+                        <li>Press <kbd className="font-mono py-0.5 px-1.5 bg-gray-200 dark:bg-gray-700 rounded-md text-sm">T</kbd> to Transcribe audio.</li>
+                        <li>Press <kbd className="font-mono py-0.5 px-1.5 bg-gray-200 dark:bg-gray-700 rounded-md text-sm">C</kbd> to Copy transcribed text.</li>
+                        <li>Press <kbd className="font-mono py-0.5 px-1.5 bg-gray-200 dark:bg-gray-700 rounded-md text-sm">S</kbd> to Share transcribed text.</li>
+                        <li>Press <kbd className="font-mono py-0.5 px-1.5 bg-gray-200 dark:bg-gray-700 rounded-md text-sm">D</kbd> to Download transcribed text.</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -208,6 +218,7 @@ const App: React.FC = () => {
     const [transcribedText, setTranscribedText] = useState<string>('');
     const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
     const [targetLanguage, setTargetLanguage] = useState<string>('English');
+    const [recordingTime, setRecordingTime] = useState<number>(0);
     
     // Session Management State (using localStorage custom hook)
     const [sessionName, setSessionName] = useState<string>('');
@@ -232,6 +243,7 @@ const App: React.FC = () => {
     // Refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
+    const timerIntervalRef = useRef<number | null>(null);
 
     // --- Effects ---
     useEffect(() => {
@@ -245,9 +257,10 @@ const App: React.FC = () => {
     useEffect(() => {
         return () => {
             if (audioUrl) URL.revokeObjectURL(audioUrl);
+            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         };
     }, [audioUrl]);
-
+    
     // --- Helper Functions ---
     const blobToBase64 = (blob: Blob): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -259,6 +272,12 @@ const App: React.FC = () => {
             };
             reader.onerror = (error) => reject(error);
         });
+    };
+
+    const formatTime = (totalSeconds: number): string => {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     };
 
     const runMetricsAnalysis = useCallback(async (text: string) => {
@@ -281,8 +300,103 @@ const App: React.FC = () => {
         }
     }, []);
     
+    const handleShare = useCallback(async (type: 'audio' | 'text') => {
+        if (!navigator.share) {
+            setError("Sharing is not supported on this browser.");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+
+        const downloadAudioFallback = (message?: string) => {
+            if (!audioBlob) return;
+            setError(message || "Audio sharing not available, downloading file instead.");
+            const url = URL.createObjectURL(audioBlob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `recording-${Date.now()}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+            setTimeout(() => setError(null), 5000);
+        };
+
+        if (type === 'audio') {
+            if (!audioBlob) return;
+            const audioFile = new File([audioBlob], `recording-${Date.now()}.webm`, { type: audioBlob.type });
+
+            if (navigator.canShare && navigator.canShare({ files: [audioFile] })) {
+                try {
+                    await navigator.share({
+                        files: [audioFile],
+                        title: 'Audio Recording',
+                        text: 'Listen to my audio recording.',
+                    });
+                } catch (err) {
+                    if (err instanceof Error && err.name !== 'AbortError') {
+                        console.error("Error sharing audio:", err);
+                        if (err.name === 'NotAllowedError') {
+                            downloadAudioFallback("Sharing permission denied. Downloading file instead.");
+                        } else {
+                            downloadAudioFallback("Could not share audio. Downloading file instead.");
+                        }
+                    }
+                }
+            } else {
+                downloadAudioFallback();
+            }
+        } else if (type === 'text') {
+            if (!transcribedText) return;
+            try {
+                await navigator.share({
+                    title: 'Transcription',
+                    text: transcribedText,
+                });
+            } catch (err) {
+                if (err instanceof Error && err.name !== 'AbortError') {
+                    console.error("Error sharing text:", err);
+                    if (err.name === 'NotAllowedError') {
+                        setError("Sharing permission denied. You can copy the text instead.");
+                    } else {
+                        setError("An error occurred while sharing text.");
+                    }
+                    setTimeout(() => setError(null), 4000);
+                }
+            }
+        }
+    }, [audioBlob, transcribedText]);
+
+    const handleDownloadText = useCallback(() => {
+        if (!transcribedText.trim()) return;
+        
+        const blob = new Blob([transcribedText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `transcription-${Date.now()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, [transcribedText]);
+
+    const handleCopyText = useCallback(() => {
+        if (transcribedText) {
+            navigator.clipboard.writeText(transcribedText).then(() => {
+                setCopySuccess('Copied!');
+                setTimeout(() => setCopySuccess(''), 2000);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                setCopySuccess('Failed');
+                setTimeout(() => setCopySuccess(''), 2000);
+            });
+        }
+    }, [transcribedText]);
+
+
     // --- Event Handlers ---
-    const handleStartRecording = async () => {
+    const handleStartRecording = useCallback(async () => {
         setError(null);
         setAudioBlob(null);
         setTranscribedText('');
@@ -291,6 +405,11 @@ const App: React.FC = () => {
         setShowMetrics(false);
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl('');
+
+        setRecordingTime(0);
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+        }
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -311,18 +430,31 @@ const App: React.FC = () => {
 
             mediaRecorderRef.current.start();
             setIsRecording(true);
+
+            timerIntervalRef.current = window.setInterval(() => {
+                setRecordingTime(prevTime => prevTime + 1);
+            }, 1000);
         } catch (err) {
             console.error("Error starting recording:", err);
             setError("Could not start recording. Please grant microphone permissions.");
+            setIsRecording(false);
+            if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+                timerIntervalRef.current = null;
+            }
         }
-    };
+    }, [audioUrl]);
 
-    const handleStopRecording = () => {
+    const handleStopRecording = useCallback(() => {
         if (mediaRecorderRef.current && isRecording) {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
+            if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+                timerIntervalRef.current = null;
+            }
         }
-    };
+    }, [isRecording]);
 
     const handleTranscribe = useCallback(async () => {
         if (!audioBlob) {
@@ -348,18 +480,6 @@ const App: React.FC = () => {
         }
     }, [audioBlob, runMetricsAnalysis, targetLanguage]);
 
-    const handleCopyText = useCallback(() => {
-        if (transcribedText) {
-            navigator.clipboard.writeText(transcribedText).then(() => {
-                setCopySuccess('Copied!');
-                setTimeout(() => setCopySuccess(''), 2000);
-            }).catch(err => {
-                console.error('Failed to copy text: ', err);
-                setCopySuccess('Failed');
-                setTimeout(() => setCopySuccess(''), 2000);
-            });
-        }
-    }, [transcribedText]);
 
     const handleClearText = () => {
         setTranscribedText('');
@@ -367,21 +487,6 @@ const App: React.FC = () => {
         setMetrics(null);
         setShowMetrics(false);
     };
-
-    const handleDownloadText = () => {
-        if (!transcribedText.trim()) return;
-        
-        const blob = new Blob([transcribedText], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `transcription-${Date.now()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    };
-
 
     const handleSaveSession = () => {
         if (!transcribedText.trim()) {
@@ -472,72 +577,55 @@ const App: React.FC = () => {
         setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
     };
     
-    const handleShare = async (type: 'audio' | 'text') => {
-        if (!navigator.share) {
-            setError("Sharing is not supported on this browser.");
-            setTimeout(() => setError(null), 3000);
-            return;
-        }
+     // --- Keyboard Shortcuts ---
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            // Ignore shortcuts if user is typing in an input, textarea, or select
+            const target = event.target as HTMLElement;
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) {
+                return;
+            }
 
-        const downloadAudioFallback = (message?: string) => {
-            if (!audioBlob) return;
-            setError(message || "Audio sharing not available, downloading file instead.");
-            const url = URL.createObjectURL(audioBlob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `recording-${Date.now()}.webm`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
-            setTimeout(() => setError(null), 5000);
+            switch (event.key.toLowerCase()) {
+                case 'r':
+                    event.preventDefault();
+                    isRecording ? handleStopRecording() : handleStartRecording();
+                    break;
+                case 't':
+                     if (audioBlob && !isRecording && !isTranscribing) {
+                        event.preventDefault();
+                        handleTranscribe();
+                    }
+                    break;
+                case 'c':
+                    if (transcribedText) {
+                        event.preventDefault();
+                        handleCopyText();
+                    }
+                    break;
+                case 's':
+                     if (transcribedText && navigator.share) {
+                        event.preventDefault();
+                        handleShare('text');
+                    }
+                    break;
+                case 'd':
+                    if (transcribedText) {
+                        event.preventDefault();
+                        handleDownloadText();
+                    }
+                    break;
+                default:
+                    break;
+            }
         };
 
-        if (type === 'audio') {
-            if (!audioBlob) return;
-            const audioFile = new File([audioBlob], `recording-${Date.now()}.webm`, { type: audioBlob.type });
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isRecording, audioBlob, isTranscribing, transcribedText, handleStartRecording, handleStopRecording, handleTranscribe, handleCopyText, handleShare, handleDownloadText]);
 
-            if (navigator.canShare && navigator.canShare({ files: [audioFile] })) {
-                try {
-                    await navigator.share({
-                        files: [audioFile],
-                        title: 'Audio Recording',
-                        text: 'Listen to my audio recording.',
-                    });
-                } catch (err) {
-                    if (err instanceof Error && err.name !== 'AbortError') {
-                        console.error("Error sharing audio:", err);
-                        if (err.name === 'NotAllowedError') {
-                            downloadAudioFallback("Sharing permission denied. Downloading file instead.");
-                        } else {
-                            downloadAudioFallback("Could not share audio. Downloading file instead.");
-                        }
-                    }
-                }
-            } else {
-                downloadAudioFallback();
-            }
-        } else if (type === 'text') {
-            if (!transcribedText) return;
-            try {
-                await navigator.share({
-                    title: 'Transcription',
-                    text: transcribedText,
-                });
-            } catch (err) {
-                if (err instanceof Error && err.name !== 'AbortError') {
-                    console.error("Error sharing text:", err);
-                    if (err.name === 'NotAllowedError') {
-                        setError("Sharing permission denied. You can copy the text instead.");
-                    } else {
-                        setError("An error occurred while sharing text.");
-                    }
-                    setTimeout(() => setError(null), 4000);
-                }
-            }
-        }
-    };
 
 
     return (
@@ -584,6 +672,11 @@ const App: React.FC = () => {
                     <button onClick={isRecording ? handleStopRecording : handleStartRecording} className={`flex items-center justify-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-300 ease-in-out w-full sm:w-auto text-white ${isRecording ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'} focus:outline-none focus:ring-4 focus:ring-opacity-50`}>
                         {isRecording ? <><StopIcon /> Stop</> : <><RecordIcon /> Record</>}
                     </button>
+                    {isRecording && (
+                        <div className="font-mono text-lg text-red-500 dark:text-red-400 px-4 py-3 rounded-full bg-red-100 dark:bg-red-900/50">
+                            {formatTime(recordingTime)}
+                        </div>
+                    )}
                     <button onClick={handleTranscribe} disabled={!audioBlob || isRecording || isTranscribing} className="flex items-center justify-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-300 ease-in-out w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-50">
                         {isTranscribing ? <><LoadingSpinner /> Transcribing...</> : 'Transcribe'}
                     </button>
